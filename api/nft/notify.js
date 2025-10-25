@@ -1,5 +1,5 @@
-import { getConfig, getNft } from "../../../lib/web3.js";
-import { verifyPayment } from "../../../utils/verifyPayment.js";
+import { getConfig, getNft } from "../../lib/web3.js";
+import { verifyPayment } from "../../utils/verifyPayment.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end("Method Not Allowed");
@@ -23,3 +23,4 @@ export default async function handler(req, res) {
     res.status(500).json({ error: e.message });
   }
 }
+
