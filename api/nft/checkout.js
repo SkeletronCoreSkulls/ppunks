@@ -1,60 +1,41 @@
 // /api/nft/checkout.js
-import { getConfig } from "../../lib/web3.js";
+const PRICE_USDC = "12.00";                 // string con dos decimales
+const NETWORK = "base";                     // debe ser "base"
+const ASSET = "USDC";                       // string
+const TREASURY = process.env.TREASURY_ADDRESS;  // VERIFICAR en Vercel
+const BASE_URL = process.env.BASE_URL;          // opcional: e.g. https://x402punks.vercel.app
 
 function baseUrl(req) {
-  const envUrl = process.env.BASE_URL;
-  if (envUrl) return envUrl.replace(/\/+$/, "");
-  const proto = (req.headers["x-forwarded-proto"] || "https").toString();
-  const host = (req.headers.host || "").toString();
+  if (BASE_URL) return BASE_URL.replace(/\/+$/, "");
+  const proto = String(req.headers["x-forwarded-proto"] || "https");
+  const host = String(req.headers.host || "");
   return `${proto}://${host}`;
 }
 
-function buildResponse(req, CONFIG, buyer) {
+function buildPayload(req) {
   const resourceUrl = `${baseUrl(req)}/api/nft/notify`;
   return {
     x402Version: 1,
-    payer: buyer || undefined,
     accepts: [
       {
         scheme: "exact",
-        network: "base",
-        maxAmountRequired: CONFIG.PRICE_USDC,       // "12.00"
-        resource: resourceUrl,                      // dónde x402 hará POST tras el pago
-        description: `Mint 1 NFT via x402 for ${CONFIG.PRICE_USDC} USDC`,
+        network: NETWORK,
+        maxAmountRequired: PRICE_USDC,
+        resource: resourceUrl,
+        description: `Mint 1 NFT via x402 for ${PRICE_USDC} USDC`,
         mimeType: "application/json",
-        payTo: CONFIG.TREASURY,
-        maxTimeoutSeconds: 300,                      // ≤ 300 para ser conservadores
-        asset: "USDC",
-        outputSchema: {
-          input: {
-            type: "http",
-            method: "POST",
-            bodyType: "json",
-            bodyFields: {
-              paymentId: { type: "string", required: true, description: "Payment ID from /checkout" },
-              txHash:    { type: "string", required: true, description: "USDC tx hash on Base to treasury" }
-            },
-            headerFields: {
-              "Content-Type": { type: "string", enum: ["application/json"] }
-            }
-          },
-          output: {
-            ok: { type: "boolean" },
-            mintTx: { type: "string", description: "NFT mint transaction hash" },
-            error: { type: "string" }
-          }
-        },
-        extra: {
-          collection: "x402punks",
-          contract: CONFIG.NFT_CONTRACT
-        }
+        payTo: TREASURY,
+        maxTimeoutSeconds: 300, // number, no string
+        asset: ASSET
+        // (sin outputSchema ni extra para minimizar rechazos)
       }
     ]
+    // (sin payer ni error)
   };
 }
 
 export default async function handler(req, res) {
-  // CORS y caching off
+  // CORS + no cache
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -64,17 +45,14 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  const CONFIG = getConfig();
+  // HEAD: solo status 402 sin body (algunos validadores lo usan)
+  if (req.method === "HEAD") {
+    res.status(402).end();
+    return;
+  }
 
-  // buyer es opcional (X402Scan puede no mandarlo)
-  let buyer;
-  try {
-    if (req.method === "POST" && req.body && typeof req.body === "object") {
-      buyer = req.body.buyer;
-    }
-  } catch { /* ignore */ }
-
-  // MUY IMPORTANTE: responder SIEMPRE 402 en GET/HEAD/POST
-  const payload = buildResponse(req, CONFIG, buyer);
-  return res.status(402).json(payload);
+  // GET/POST: status 402 + JSON exacto
+  const payload = buildPayload(req);
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  return res.status(402).end(JSON.stringify(payload));
 }
